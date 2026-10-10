@@ -97,6 +97,22 @@ VARIANTS: list[Variant] = [
     ),
 ]
 
+# Which variants to preload: SA3_VARIANTS is a comma-separated list of keys
+# (e.g. "medium" or "small-music,small-sfx"); unset loads everything. The
+# Docker deployment sets SA3_VARIANTS=medium so a 12 GB card doesn't have to
+# hold all three checkpoints at once.
+_variant_keys_env = os.environ.get("SA3_VARIANTS", "").strip()
+if _variant_keys_env:
+    _known = {v.key: v for v in VARIANTS}
+    _wanted = [k.strip() for k in _variant_keys_env.split(",") if k.strip()]
+    _unknown = [k for k in _wanted if k not in _known]
+    if _unknown:
+        sys.exit(
+            f"SA3_VARIANTS: unknown variant(s): {', '.join(_unknown)} "
+            f"(valid keys: {', '.join(_known)})"
+        )
+    VARIANTS = [_known[k] for k in _wanted]
+
 
 # ---------------------------------------------------------------------------
 # Preload all variants at module level (ZeroGPU CUDA emulation accepts it)
@@ -118,7 +134,10 @@ for v in VARIANTS:
     model, config = get_pretrained_model(v.repo)
     sr = int(config["sample_rate"])
     ss = int(config["sample_size"])
-    model = model.to("cuda").to(torch.float16)
+    # Cast to fp16 *before* moving to the GPU: a 12 GB card cannot hold the
+    # fp32 copy of the medium model (peak ~10.4 GB) that the reversed order
+    # requires. Same final state, half the transfer.
+    model = model.to(torch.float16).to("cuda")
     LOADED[v.key] = LoadedVariant(
         variant=v,
         model=model,

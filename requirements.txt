@@ -1,7 +1,7 @@
 --extra-index-url https://download.pytorch.org/whl/cu132
 einops
 soundfile
-numpy<2
+numpy
 matplotlib
 Pillow
 pytorch_lightning
